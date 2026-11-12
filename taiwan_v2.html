@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>台灣 GPS 轉 マップコード</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#dfe3ea;
+    --accent:#2563eb; --accent-text:#fff; --ok:#15803d; --err:#b91c1c; --warn:#b45309; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12151b; --card:#1b2029; --text:#e7eaf0; --muted:#9aa3b2;
+    --line:#2c3340; --accent:#3b82f6; --accent-text:#fff; --ok:#4ade80; --err:#f87171; --warn:#fbbf24; } }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--text); line-height:1.55;
+    font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; }
+  main { max-width:660px; margin:0 auto; }
+  h1 { font-size:1.4rem; margin:0 0 4px; } h2 { font-size:1.05rem; margin:0 0 10px; }
+  .sub { color:var(--muted); margin:0 0 20px; font-size:.92rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:.85rem; color:var(--muted); margin-bottom:4px; }
+  input[type=text], textarea { width:100%; padding:10px 12px; font-size:1rem; color:var(--text);
+    background:var(--bg); border:1px solid var(--line); border-radius:8px; font-family:inherit; }
+  textarea { min-height:120px; font-size:.9rem; }
+  input:focus, textarea:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  .row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; align-items:center; }
+  button, a.btn { font:inherit; cursor:pointer; padding:9px 16px; border-radius:8px; text-decoration:none; white-space:nowrap;
+    border:1px solid var(--line); background:var(--card); color:var(--text); display:inline-block; }
+  button.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  .msg { margin-top:12px; font-size:.9rem; white-space:pre-wrap; }
+  .msg.err { color:var(--err); } .msg.ok { color:var(--ok); } .msg.warn { color:var(--warn); }
+  .big { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:1.7rem; margin:10px 0 2px; letter-spacing:.02em; }
+  .hint { color:var(--muted); font-size:.82rem; margin-top:8px; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; font-size:.9rem; }
+  th,td { text-align:left; padding:7px 6px; border-bottom:1px solid var(--line); }
+  th { font-size:.78rem; color:var(--muted); } td.code { font-family:ui-monospace,Menlo,Consolas,monospace; white-space:nowrap; }
+  details { font-size:.85rem; color:var(--muted); margin-top:4px; } details summary { cursor:pointer; color:var(--text); font-weight:600; }
+  details p, details li { margin:6px 0; } code { font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .zoneform input { width:110px; } footer { color:var(--muted); font-size:.78rem; text-align:center; margin-top:24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>台灣 GPS 轉 マップコード</h1>
+  <p class="sub">依你提供的 133 筆台灣樣本反推的規則。座標為 WGS84(Google Maps 經緯度)。</p>
+
+  <section class="card">
+    <h2>座標 → マップコード</h2>
+    <label for="coord">緯度, 經度</label>
+    <input id="coord" type="text" autocomplete="off" value="25.062866, 121.533873">
+    <div class="row"><button id="go" class="primary" type="button">轉換</button><button id="here" type="button">使用目前位置</button></div>
+    <div id="out"></div>
+  </section>
+
+  <section class="card">
+    <h2>景點名稱 → マップコード</h2>
+    <label for="q">輸入景點或地址(需要網路)</label>
+    <input id="q" type="text" autocomplete="off" placeholder="例如 阿里山國家森林遊樂區">
+    <div class="row"><button id="search" class="primary" type="button">搜尋</button></div>
+    <div id="qMsg" class="msg"></div>
+    <table id="qTable" hidden><thead><tr><th>地點</th><th>マップコード</th><th></th></tr></thead><tbody id="qRows"></tbody></table>
+    <div class="hint">名稱查座標用的是 OpenStreetMap 的免費服務(Nominatim,失敗時改用 Photon)。它的座標和 Google Maps 可能差幾十到幾百公尺,同名地點也可能有多個,請看清楚地點再用;重要的點建議從 Google Maps 複製座標。</div>
+  </section>
+
+  <section class="card">
+    <h2>批次轉換</h2>
+    <label for="batch">每行一個:<code>名稱, 緯度, 經度</code>(名稱可省略)</label>
+    <textarea id="batch" placeholder="台北萬豪酒店, 25.080419, 121.55929&#10;25.027374, 121.434206"></textarea>
+    <div class="row"><button id="runBatch" class="primary" type="button">批次轉換</button><button id="copyBatch" type="button" hidden>複製結果</button></div>
+    <div id="batchMsg" class="msg"></div>
+    <table id="batchTable" hidden><thead><tr><th>名稱</th><th>マップコード</th></tr></thead><tbody id="batchRows"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>マップコード → 座標</h2>
+    <label for="code">例如 10 112 243*10(Zone 0 省略寫法如 000 135*71)</label>
+    <input id="code" type="text" autocomplete="off" value="000 135*71">
+    <div class="row"><button id="dec" class="primary" type="button">解碼</button></div>
+    <div id="decOut" class="msg"></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>規則說明與已知 zone 表</summary>
+      <p>台灣沒有 DENSO 官方的 zone。這 133 筆樣本顯示:</p>
+      <ul>
+        <li>Zone 是 WGS84 上 <b>0.25° × 0.25°</b> 的方格,西南角座標為 0.25° 的整數倍,不做任何測地系位移。</li>
+        <li>Block、Unit 與日本相同:各切 30×30,編號 = 緯度列×30 + 經度欄,從西南角往北往東增加。Zone 0 省略 zone 號碼,Block 與 Unit 補滿 3 位。</li>
+        <li>S-core:先把 unit 切成 3×3 選一格,再把該格切成 3×3 選一格,每格的數字依序(由北到南)為 <code>2 3 4 / 1 0 8 / 5 6 7</code>。</li>
+        <li><b>Zone 號碼沒有公式</b>(0 是台北、1 高雄、2 台中、3 台南,其餘像是依重要程度編的)。目前只知道下表這些格子;遇到未知的格子,請在 metropit 那個站查同一個座標,把 zone 號碼填進來,之後就會記住(存在這個瀏覽器裡)。金門、馬祖在 metropit 查詢是 unknown,沒有 zone,輸入這些座標會顯示「此區域沒有 zone」。</li>
+      </ul>
+      <table><thead><tr><th>Zone</th><th>西南角緯度</th><th>西南角經度</th><th>來源</th></tr></thead><tbody id="zoneRows"></tbody></table>
+      <label for="io" style="margin-top:12px">匯出 / 匯入(每行 <code>zone,緯度,經度</code>)</label>
+      <textarea id="io" style="min-height:90px"></textarea>
+      <div class="row"><button id="exp" type="button">顯示目前表</button><button id="imp" type="button">匯入</button></div>
+      <div id="ioMsg" class="msg"></div>
+    </details>
+  </section>
+  <footer>「マップコード」為 DENSO 的註冊商標,本工具非官方產品,僅供個人使用。</footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  // 由 55 筆樣本推得:zone -> [西南角緯度, 西南角經度]
+  var SEED = { 0:[25,121.5], 1:[22.5,120.25], 2:[24,120.5], 3:[22.75,120], 7:[24.75,121.25], 9:[24.75,121],
+    10:[25,121.25], 14:[23.5,120.25], 15:[24.25,120.5], 17:[24.75,121.5], 19:[24.75,121.75], 20:[22.75,120.25],
+    22:[24.5,121.75], 23:[23.75,120.25], 68:[25,121], 71:[25.25,121.5], 111:[25.25,121.25],
+    4:[22.75,121], 25:[23.25,121.25], 40:[23.5,121.25], 69:[22.5,121],
+    45:[24,121], 21:[24.25,120.75], 13:[23.5,120.5], 37:[21.75,120.75], 46:[22,120.5], 6:[23.75,121.5],
+    59:[23.5,120], 27:[23.75,120.75], 11:[23.75,120.5], 8:[24.75,120.75],
+    5:[23.25,120.25], 31:[24,120.25], 39:[22.5,120.5], 44:[22.25,120.25],
+    35:[23.5,120.75], 62:[23.25,121], 34:[23,121], 29:[23,121.25],
+    12:[24.5,120.75], 30:[24.5,121], 56:[24.5,121.5], 60:[24.5,121.25],
+    24:[23,120], 51:[23,120.5], 26:[22.75,120.5],
+    52:[22.25,120.5], 53:[22.5,120.75], 41:[22,120.75],
+    57:[24.25,121.25], 67:[24,121.5], 48:[24.25,121.75], 28:[24,120.75], 61:[24.25,121],
+    36:[23.5,119.5], 72:[22,121.5], 73:[22.5,121.25],
+    58:[23.25,120.75], 65:[23,120.75], 18:[23,120.25], 64:[24.25,121.5], 66:[24,121.25], 54:[22.25,120.75], 55:[22.75,120.75],
+    33:[23.25,120.5], 63:[23.5,121], 43:[23.75,121], 42:[23.75,121.25], 47:[23.5,121.5] };
+  var LAYOUT = [[5,6,7],[1,0,8],[2,3,4]], POS = {};
+  LAYOUT.forEach(function (row, r) { row.forEach(function (d, c) { POS[d] = [r, c]; }); });
+  var STORE = "tw_mapcode_extra_zones";
+
+  var extra = {};                         // "lat0,lon0" -> zone
+  try { extra = JSON.parse(localStorage.getItem(STORE) || "{}") || {}; } catch (e) { extra = {}; }
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(extra)); } catch (e) {} }
+  function key(a, b) { return a.toFixed(2) + "," + b.toFixed(2); }
+  function zoneTable() {                  // 回傳 { cellKey: zone } 與 { zone: [lat0,lon0] }
+    var byCell = {}, byZone = {};
+    Object.keys(SEED).forEach(function (z) { byCell[key(SEED[z][0], SEED[z][1])] = +z; byZone[z] = SEED[z]; });
+    Object.keys(extra).forEach(function (k) { var p = k.split(",").map(Number); byCell[k] = extra[k]; byZone[extra[k]] = p; });
+    return { byCell: byCell, byZone: byZone };
+  }
+  function pad(n, w) { var s = String(n); while (s.length < w) s = "0" + s; return s; }
+
+  function scoreEncode(fr, fc) {
+    var rb = Math.min(2, Math.floor(fr * 3)), cb = Math.min(2, Math.floor(fc * 3));
+    var fr2 = fr * 3 - rb, fc2 = fc * 3 - cb;
+    var rb2 = Math.min(2, Math.floor(fr2 * 3)), cb2 = Math.min(2, Math.floor(fc2 * 3));
+    return LAYOUT[rb][cb] * 10 + LAYOUT[rb2][cb2];
+  }
+  function scoreDecode(s) {
+    var a = POS[s.charAt(0)], b = POS[s.charAt(1)];
+    return { fr: (a[0] + (b[0] + .5) / 3) / 3, fc: (a[1] + (b[1] + .5) / 3) / 3 };
+  }
+
+  function encode(lat, lon) {
+    var lat0 = Math.floor(lat * 4 + 1e-9) / 4, lon0 = Math.floor(lon * 4 + 1e-9) / 4;
+    var r = (lat - lat0) * 3600, c = (lon - lon0) * 3600, ri = Math.floor(r), ci = Math.floor(c);
+    var p = { lat0: lat0, lon0: lon0, block: Math.floor(ri / 30) * 30 + Math.floor(ci / 30),
+      unit: (ri % 30) * 30 + (ci % 30), score: scoreEncode(r - ri, c - ci) };
+    var z = zoneTable().byCell[key(lat0, lon0)];
+    p.zone = (z === undefined) ? null : z;
+    return p;
+  }
+  function format(p, zone) {
+    var z = (zone === undefined) ? p.zone : zone, tail = pad(p.block, 3) + " " + pad(p.unit, 3) + "*" + pad(p.score, 2);
+    if (z === null) return null;
+    return z === 0 ? tail : z + " " + tail;
+  }
+  function decode(text) {
+    var t = String(text).replace(/＊/g, "*").trim(), m = t.split("*");
+    if (m.length !== 2 || !/^[0-8]{2}$/.test(m[1].trim())) return { error: "格式應為「Zone Block Unit*SS」,S-core 為兩位數字(各 0~8)。" };
+    var g = m[0].trim().split(/[\s-]+/).filter(Boolean), zone, block, unit;
+    if (g.length === 3) { zone = +g[0]; block = +g[1]; unit = +g[2]; }
+    else if (g.length === 2) { zone = 0; block = +g[0]; unit = +g[1]; }
+    else return { error: "格式應為「Zone Block Unit*SS」。" };
+    if ([zone, block, unit].some(function (n) { return !isFinite(n) || n < 0 || n !== Math.floor(n); }) || block > 899 || unit > 899)
+      return { error: "Block 與 Unit 必須是 0~899 的整數。" };
+    var o = zoneTable().byZone[zone];
+    if (!o) return { error: "這個 zone(" + zone + ")還不在已知表裡,無法解碼。" };
+    var f = scoreDecode(m[1].trim());
+    var r = Math.floor(block / 30) * 30 + Math.floor(unit / 30) + f.fr, c = (block % 30) * 30 + (unit % 30) + f.fc;
+    return { lat: o[0] + r / 3600, lon: o[1] + c / 3600 };
+  }
+  function parseCoord(text) {
+    var n = String(text).replace(/[°,;，]/g, " ").trim().split(/\s+/).filter(Boolean);
+    if (n.length !== 2) return null;
+    var a = Number(n[0]), b = Number(n[1]);
+    return (isFinite(a) && isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180) ? { lat: a, lon: b } : null;
+  }
+  window.__tw = { encode: encode, format: format, decode: decode, parseCoord: parseCoord };
+
+  var $ = function (id) { return document.getElementById(id); };
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+  function copy(text, btn) {
+    var done = function () { var o = btn.textContent; btn.textContent = "已複製"; setTimeout(function () { btn.textContent = o; }, 1200); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done);
+    else { var t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); done(); }
+  }
+  function mapsLink(lat, lon) { var a = el("a", "btn", "在 Google Maps 開啟"); a.target = "_blank"; a.rel = "noopener"; a.href = "https://www.google.com/maps?q=" + lat + "," + lon; return a; }
+
+  // 未知 zone 時,提示填入號碼
+  function zoneForm(p, onDone) {
+    var box = el("div", "msg warn", "這個格子(西南角 " + p.lat0 + ", " + p.lon0 + ")的 zone 號碼還不知道。\n請在 metropit 查同一個座標,把代碼最前面的 zone 號碼填入(Zone 0 的代碼沒有前綴,請填 0)。");
+    var f = el("div", "row zoneform"), inp = el("input"); inp.type = "text"; inp.inputMode = "numeric"; inp.placeholder = "zone 號碼";
+    var b = el("button", "primary", "儲存"); b.type = "button";
+    b.addEventListener("click", function () {
+      var z = Number(inp.value.trim());
+      if (inp.value.trim() === "" || !isFinite(z) || z < 0 || z !== Math.floor(z)) { box.textContent = "請填非負整數。"; return; }
+      var used = zoneTable().byZone[z];
+      if (used && key(used[0], used[1]) !== key(p.lat0, p.lon0)) { box.textContent = "zone " + z + " 已被另一格使用(" + used[0] + ", " + used[1] + "),請確認。"; return; }
+      extra[key(p.lat0, p.lon0)] = z; save(); renderZones(); onDone();
+    });
+    f.appendChild(inp); f.appendChild(b); box.appendChild(f); return box;
+  }
+
+  // 金門、馬祖(及其他台灣本島以外的遠處):metropit 查詢結果為 unknown,沒有 zone
+  function noZoneRegion(lat, lon) { return lat >= 25.5 || lat < 21.5 || lon < 119.25 || lon > 122.5; }
+
+  function runOne() {
+    var out = $("out"); out.innerHTML = "";
+    var c = parseCoord($("coord").value);
+    if (!c) { out.appendChild(el("div", "msg err", "請輸入兩個數字:緯度與經度。")); return; }
+    var p = encode(c.lat, c.lon), s = format(p);
+    if (s !== null) {
+      out.appendChild(el("div", "big", s));
+      out.appendChild(el("div", "hint", "zone " + p.zone + " · 格子西南角 " + p.lat0 + ", " + p.lon0));
+      var row = el("div", "row"), b = el("button", "", "複製"); b.type = "button"; b.addEventListener("click", function () { copy(s, b); });
+      row.appendChild(b); out.appendChild(row);
+    } else if (noZoneRegion(c.lat, c.lon)) {
+      out.appendChild(el("div", "msg warn", "此區域沒有 zone"));
+      out.appendChild(el("div", "hint", "金門、馬祖等地在 metropit 查詢結果也是 unknown,沒有 zone 就無法產生代碼。"));
+    } else {
+      out.appendChild(el("div", "big", "? " + pad(p.block, 3) + " " + pad(p.unit, 3) + "*" + pad(p.score, 2)));
+      out.appendChild(el("div", "hint", "Block / Unit / S-core 已算出,缺 zone 號碼。"));
+      out.appendChild(zoneForm(p, runOne));
+    }
+  }
+
+  function runBatch() {
+    var lines = $("batch").value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+    var tb = $("batchRows"); tb.innerHTML = ""; var tsv = [], missing = {}, bad = 0;
+    lines.forEach(function (l) {
+      var m = l.match(/^(.*?)[\s,，\t]*(-?\d+(?:\.\d+)?)\s*[,，\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+      var tr = el("tr"), name = m ? m[1].replace(/[,，\t]+$/, "") : l, code;
+      var c = m ? parseCoord(m[2] + " " + m[3]) : null;
+      if (!c) { code = "(無法解析)"; bad++; }
+      else { var p = encode(c.lat, c.lon), s = format(p); if (s === null) { if (noZoneRegion(c.lat, c.lon)) code = "(此區域沒有 zone)"; else { code = "?(缺 zone)"; missing[p.lat0 + "," + p.lon0] = p; } } else code = s; }
+      tr.appendChild(el("td", "", name)); tr.appendChild(el("td", "code", code)); tb.appendChild(tr); tsv.push(name + "\t" + code);
+    });
+    $("batchTable").hidden = !lines.length; $("copyBatch").hidden = !lines.length; $("copyBatch").onclick = function () { copy(tsv.join("\n"), $("copyBatch")); };
+    var ks = Object.keys(missing), msg = el("div");
+    $("batchMsg").className = "msg" + (ks.length || bad ? " warn" : " ok");
+    $("batchMsg").textContent = lines.length ? ("共 " + lines.length + " 筆" + (bad ? ",無法解析 " + bad + " 筆" : "") +
+      (ks.length ? "。\n以下格子還缺 zone 號碼(西南角):" + ks.join(" ; ") + "\n請在單筆轉換裡輸入該格內任一座標並填入號碼。" : "。")) : "";
+  }
+
+  function runDecode() {
+    var o = $("decOut"), d = decode($("code").value); o.innerHTML = "";
+    if (d.error) { o.className = "msg err"; o.textContent = d.error; return; }
+    o.className = "msg ok"; o.appendChild(document.createTextNode("座標:" + d.lat.toFixed(6) + ", " + d.lon.toFixed(6) + "\n")); o.appendChild(mapsLink(d.lat.toFixed(6), d.lon.toFixed(6)));
+  }
+
+  function renderZones() {
+    var tb = $("zoneRows"); tb.innerHTML = ""; var t = zoneTable();
+    Object.keys(t.byZone).map(Number).sort(function (a, b) { return a - b; }).forEach(function (z) {
+      var tr = el("tr"); tr.appendChild(el("td", "", String(z))); tr.appendChild(el("td", "", String(t.byZone[z][0]))); tr.appendChild(el("td", "", String(t.byZone[z][1])));
+      tr.appendChild(el("td", "", SEED[z] ? "樣本" : "你填的")); tb.appendChild(tr);
+    });
+  }
+  $("exp").addEventListener("click", function () {
+    var t = zoneTable(); $("io").value = Object.keys(t.byZone).map(Number).sort(function (a, b) { return a - b; })
+      .map(function (z) { return z + "," + t.byZone[z][0] + "," + t.byZone[z][1]; }).join("\n");
+  });
+  $("imp").addEventListener("click", function () {
+    var n = 0, bad = 0;
+    $("io").value.split(/\r?\n/).forEach(function (l) {
+      l = l.trim(); if (!l) return; var a = l.split(/[,\s]+/).map(Number);
+      if (a.length !== 3 || a.some(function (x) { return !isFinite(x); }) || a[0] < 0 || a[0] !== Math.floor(a[0]) || (a[1] * 4) !== Math.floor(a[1] * 4) || (a[2] * 4) !== Math.floor(a[2] * 4)) { bad++; return; }
+      var t = zoneTable(), u = t.byZone[a[0]]; if (u && key(u[0], u[1]) !== key(a[1], a[2])) { bad++; return; }
+      if (!SEED[a[0]]) { extra[key(a[1], a[2])] = a[0]; n++; }
+    });
+    save(); renderZones(); $("ioMsg").className = "msg " + (bad ? "warn" : "ok"); $("ioMsg").textContent = "匯入 " + n + " 筆" + (bad ? ",略過 " + bad + " 筆(格式不符、座標不是 0.25 的倍數,或 zone 號碼衝突)" : "") + "。";
+  });
+
+  $("go").addEventListener("click", runOne); $("coord").addEventListener("keydown", function (e) { if (e.key === "Enter") runOne(); });
+  $("runBatch").addEventListener("click", runBatch); $("dec").addEventListener("click", runDecode); $("code").addEventListener("keydown", function (e) { if (e.key === "Enter") runDecode(); });
+  $("here").addEventListener("click", function () {
+    if (!navigator.geolocation) { $("out").textContent = "此瀏覽器不支援定位。"; return; }
+    navigator.geolocation.getCurrentPosition(function (pos) { $("coord").value = pos.coords.latitude.toFixed(6) + ", " + pos.coords.longitude.toFixed(6); runOne(); },
+      function (err) { $("out").textContent = "無法取得位置:" + err.message; }, { enableHighAccuracy: true, timeout: 10000 });
+  });
+  // ---- 景點名稱搜尋(OpenStreetMap Nominatim,失敗改用 Photon) ----
+  function fetchJson(url, ms) {
+    var ctl = ("AbortController" in window) ? new AbortController() : null, tm = ctl ? setTimeout(function () { ctl.abort(); }, ms || 10000) : null;
+    return fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) { if (tm) clearTimeout(tm); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+  }
+  function geocode(q) {
+    var enc = encodeURIComponent(q);
+    return fetchJson("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&countrycodes=tw&accept-language=zh-TW&q=" + enc)
+      .then(function (a) { return a.map(function (x) { return { name: x.display_name, lat: +x.lat, lon: +x.lon }; }); })
+      .catch(function () {
+        return fetchJson("https://photon.komoot.io/api/?limit=8&bbox=118,21.5,122.5,26.5&q=" + enc).then(function (g) {
+          return (g.features || []).map(function (f) {
+            var p = f.properties || {}, parts = [p.name, p.street, p.district, p.city || p.county, p.state].filter(Boolean);
+            return { name: parts.join(", "), lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+          });
+        });
+      });
+  }
+  function runSearch() {
+    var q = $("q").value.trim(), msg = $("qMsg"), tb = $("qRows"), tbl = $("qTable");
+    tb.innerHTML = ""; tbl.hidden = true;
+    if (!q) { msg.className = "msg err"; msg.textContent = "請輸入景點名稱。"; return; }
+    msg.className = "msg"; msg.textContent = "搜尋中…"; $("search").disabled = true;
+    geocode(q).then(function (list) {
+      $("search").disabled = false;
+      if (!list.length) { msg.className = "msg warn"; msg.textContent = "找不到「" + q + "」,試試更完整的名稱或加上縣市。"; return; }
+      msg.className = "msg ok"; msg.textContent = "找到 " + list.length + " 筆。請確認是你要的地點。";
+      list.forEach(function (it) {
+        var p = encode(it.lat, it.lon), s = format(p), tr = el("tr"), td1 = el("td", "", it.name), td2 = el("td", "code"), td3 = el("td");
+        td1.appendChild(el("div", "hint", it.lat.toFixed(6) + ", " + it.lon.toFixed(6)));
+        if (s !== null) { td2.textContent = s; var b = el("button", "", "複製"); b.type = "button"; b.addEventListener("click", function () { copy(s, b); }); td3.appendChild(b); }
+        else td2.textContent = noZoneRegion(it.lat, it.lon) ? "此區域沒有 zone" : "?(缺 zone)";
+        var u = el("button", "", "帶入座標"); u.type = "button"; u.addEventListener("click", function () { $("coord").value = it.lat.toFixed(6) + ", " + it.lon.toFixed(6); runOne(); $("coord").scrollIntoView({ behavior: "smooth", block: "center" }); });
+        td3.appendChild(u);
+        tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tb.appendChild(tr);
+      });
+      tbl.hidden = false;
+    }).catch(function (e) {
+      $("search").disabled = false; msg.className = "msg err";
+      msg.textContent = "搜尋失敗(" + (e && e.message ? e.message : e) + ")。可能是沒有網路,或服務暫時擋下請求;請稍後再試,或直接輸入座標。";
+    });
+  }
+  $("search").addEventListener("click", runSearch); $("q").addEventListener("keydown", function (e) { if (e.key === "Enter") runSearch(); });
+  window.__tw.geocode = geocode;
+
+  renderZones(); runOne(); runDecode();
+})();
+</script>
+</body>
+</html>
