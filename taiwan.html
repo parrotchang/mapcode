@@ -40,7 +40,7 @@
 <body>
 <main>
   <h1>台灣 GPS 轉 マップコード</h1>
-  <p class="sub">依你提供的 98 筆台灣樣本反推的規則。座標為 WGS84(Google Maps 經緯度)。</p>
+  <p class="sub">依你提供的 123 筆台灣樣本反推的規則。座標為 WGS84(Google Maps 經緯度)。</p>
 
   <section class="card">
     <h2>座標 → マップコード</h2>
@@ -70,12 +70,12 @@
   <section class="card">
     <details>
       <summary>規則說明與已知 zone 表</summary>
-      <p>台灣沒有 DENSO 官方的 zone。這 98 筆樣本顯示:</p>
+      <p>台灣沒有 DENSO 官方的 zone。這 123 筆樣本顯示:</p>
       <ul>
         <li>Zone 是 WGS84 上 <b>0.25° × 0.25°</b> 的方格,西南角座標為 0.25° 的整數倍,不做任何測地系位移。</li>
         <li>Block、Unit 與日本相同:各切 30×30,編號 = 緯度列×30 + 經度欄,從西南角往北往東增加。Zone 0 省略 zone 號碼,Block 與 Unit 補滿 3 位。</li>
         <li>S-core:先把 unit 切成 3×3 選一格,再把該格切成 3×3 選一格,每格的數字依序(由北到南)為 <code>2 3 4 / 1 0 8 / 5 6 7</code>。</li>
-        <li><b>Zone 號碼沒有公式</b>(0 是台北、1 高雄、2 台中、3 台南,其餘像是依重要程度編的)。目前只知道下表這些格子;遇到未知的格子,請在 metropit 那個站查同一個座標,把 zone 號碼填進來,之後就會記住(存在這個瀏覽器裡)。</li>
+        <li><b>Zone 號碼沒有公式</b>(0 是台北、1 高雄、2 台中、3 台南,其餘像是依重要程度編的)。目前只知道下表這些格子;遇到未知的格子,請在 metropit 那個站查同一個座標,把 zone 號碼填進來,之後就會記住(存在這個瀏覽器裡)。金門、馬祖在 metropit 查詢是 unknown,沒有 zone,輸入這些座標會顯示「此區域沒有 zone」。</li>
       </ul>
       <table><thead><tr><th>Zone</th><th>西南角緯度</th><th>西南角經度</th><th>來源</th></tr></thead><tbody id="zoneRows"></tbody></table>
       <label for="io" style="margin-top:12px">匯出 / 匯入(每行 <code>zone,緯度,經度</code>)</label>
@@ -101,7 +101,10 @@
     35:[23.5,120.75], 62:[23.25,121], 34:[23,121], 29:[23,121.25],
     12:[24.5,120.75], 30:[24.5,121], 56:[24.5,121.5], 60:[24.5,121.25],
     24:[23,120], 51:[23,120.5], 26:[22.75,120.5],
-    52:[22.25,120.5], 53:[22.5,120.75], 41:[22,120.75] };
+    52:[22.25,120.5], 53:[22.5,120.75], 41:[22,120.75],
+    57:[24.25,121.25], 67:[24,121.5], 48:[24.25,121.75], 28:[24,120.75], 61:[24.25,121],
+    36:[23.5,119.5], 72:[22,121.5], 73:[22.5,121.25],
+    58:[23.25,120.75], 65:[23,120.75], 18:[23,120.25], 64:[24.25,121.5], 66:[24,121.25] };
   var LAYOUT = [[5,6,7],[1,0,8],[2,3,4]], POS = {};
   LAYOUT.forEach(function (row, r) { row.forEach(function (d, c) { POS[d] = [r, c]; }); });
   var STORE = "tw_mapcode_extra_zones";
@@ -190,6 +193,9 @@
     f.appendChild(inp); f.appendChild(b); box.appendChild(f); return box;
   }
 
+  // 金門、馬祖(及其他台灣本島以外的遠處):metropit 查詢結果為 unknown,沒有 zone
+  function noZoneRegion(lat, lon) { return lat >= 25.5 || lat < 21.5 || lon < 119.25 || lon > 122.5; }
+
   function runOne() {
     var out = $("out"); out.innerHTML = "";
     var c = parseCoord($("coord").value);
@@ -200,6 +206,9 @@
       out.appendChild(el("div", "hint", "zone " + p.zone + " · 格子西南角 " + p.lat0 + ", " + p.lon0));
       var row = el("div", "row"), b = el("button", "", "複製"); b.type = "button"; b.addEventListener("click", function () { copy(s, b); });
       row.appendChild(b); out.appendChild(row);
+    } else if (noZoneRegion(c.lat, c.lon)) {
+      out.appendChild(el("div", "msg warn", "此區域沒有 zone"));
+      out.appendChild(el("div", "hint", "金門、馬祖等地在 metropit 查詢結果也是 unknown,沒有 zone 就無法產生代碼。"));
     } else {
       out.appendChild(el("div", "big", "? " + pad(p.block, 3) + " " + pad(p.unit, 3) + "*" + pad(p.score, 2)));
       out.appendChild(el("div", "hint", "Block / Unit / S-core 已算出,缺 zone 號碼。"));
@@ -215,7 +224,7 @@
       var tr = el("tr"), name = m ? m[1].replace(/[,，\t]+$/, "") : l, code;
       var c = m ? parseCoord(m[2] + " " + m[3]) : null;
       if (!c) { code = "(無法解析)"; bad++; }
-      else { var p = encode(c.lat, c.lon), s = format(p); if (s === null) { code = "?(缺 zone)"; missing[p.lat0 + "," + p.lon0] = p; } else code = s; }
+      else { var p = encode(c.lat, c.lon), s = format(p); if (s === null) { if (noZoneRegion(c.lat, c.lon)) code = "(此區域沒有 zone)"; else { code = "?(缺 zone)"; missing[p.lat0 + "," + p.lon0] = p; } } else code = s; }
       tr.appendChild(el("td", "", name)); tr.appendChild(el("td", "code", code)); tb.appendChild(tr); tsv.push(name + "\t" + code);
     });
     $("batchTable").hidden = !lines.length; $("copyBatch").hidden = !lines.length; $("copyBatch").onclick = function () { copy(tsv.join("\n"), $("copyBatch")); };
